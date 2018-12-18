@@ -2,20 +2,25 @@ library('RadETL')
 library('oro.dicom')
 library('oro.nifti')
 
+options(niftiAuditTrail = TRUE)
+
 cfgReadFile <- function(file, pattern) {
     gsub(paste0(pattern, "="),
          "",
          grep(paste0("^", pattern, "="), scan(file, what="", quiet = TRUE, sep = "\n"), value = TRUE))
 }
 
-conDetails <- '../RCDMviewer.cfg'
+viewerConfig <- '../RCDMviewer.cfg'
 
 db <- DBMSIO$new(
-    server = cfgReadFile(conDetails, 'address'),
-    user = cfgReadFile(conDetails, 'user'),
-    pw = cfgReadFile(conDetails, 'password'),
-    dbms = cfgReadFile(conDetails, 'dbms')
+    server = cfgReadFile(viewerConfig, 'address'),
+    user = cfgReadFile(viewerConfig, 'user'),
+    pw = cfgReadFile(viewerConfig, 'password'),
+    dbms = cfgReadFile(viewerConfig, 'dbms')
 )
+
+duration <- as.integer(cfgReadFile(viewerConfig, 'duration'))
+debug <- as.logical(cfgReadFile(viewerConfig, 'debugMode'))
 
 # If success connection, input tableName, databaseName,,
 databaseSchema <- 'Radiology_CDM_QUER.dbo'
@@ -24,7 +29,6 @@ tbSchema_Occurrence <- 'Radiology_Occurrence'
 
 # RCDM Occurrence
 occurrence <- db$dbGetdtS(dbS = databaseSchema, tbS = tbSchema_Occurrence)
-total_no <- sort(unique(occurrence$IMAGE_TOTAL_COUNT))
 
 # RCDM Image
 image <- db$dbGetdtS(dbS = databaseSchema, tbS = tbSchema_Image)
@@ -43,7 +47,9 @@ server <- function(input, output, session) {
         input$prefix
     })
     
+    #
     # Radiology_Occurrence component
+    # 
     getRadiologyOccurrence = reactive({
         occurrence[occurrence$RADIOLOGY_OCCURRENCE_ID == input$RADO_occurrence_id,]
     })
@@ -53,20 +59,28 @@ server <- function(input, output, session) {
             need(input$prefix != "", "Please input Prefix path")
             need(input$RADO_occurrence_id != "", "Please check CDM connection information..")
         })
-        withProgress(message = 'readDICOM...', value = 0, {
+        withProgress(message = 'Image loading...', value = 100, {
             dc <- tryCatch({
-                readDICOM(path = paste0(choosePrefix(), getRadiologyOccurrence()$RADIOLOGY_DIRPATH), verbose = TRUE)
-            }, error = function(e) { e })
+                showModal(modalDialog(
+                    title = sprintf("Occurrence ID: %s Reading", input$RADO_occurrence_id), 
+                    sprintf("Reading the %d images Please wait", getRadiologyOccurrence()$IMAGE_TOTAL_COUNT), easyClose = FALSE, footer = NULL))
+                readDICOM(path = paste0(choosePrefix(), getRadiologyOccurrence()$RADIOLOGY_DIRPATH), verbose = debug)
+            }, error = function(e) { 
+                e 
+                removeModal(session)
+            })
         })
-        if(inherits(dc, "simpleError")) showNotification(ui = dc$message, type = "error", duration = 15)
+        if(inherits(dc, "simpleError")) showNotification(ui = dc$message, type = "error", duration = duration)
         else dc
     })
     
     niftiVolume <- reactive({
-        nif <- tryCatch({
-            dicom2nifti(loadOcur(), datatype = 4)
-        }, error = function(e) { e })
-        if(inherits(nif, "simpleError")) showNotification(ui = nif$message, type = "error", duration = 15)
+        withProgress(message = 'Convert dicom to nifti...', value = 100, {
+            nif <- tryCatch({
+                dicom2nifti(loadOcur(), datatype = 4)
+            }, error = function(e) { e })
+        })
+        if(inherits(nif, "simpleError")) showNotification(ui = nif$message, type = "error", duration = duration)
         else nif
     })
     
@@ -89,21 +103,30 @@ server <- function(input, output, session) {
         validate({
             need(input$prefix != "", "Please input Prefix path")
         })
-        try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single", col = gray(0:64 / 64)))
+        withProgress(message = 'loading Axial image...', value = 100, {
+            try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single", col = gray(0:64 / 64)))
+        })
+        removeModal(session)
     })
     
     output$Sagittal <- renderPlot({
         validate({
             need(input$prefix != "", "Please input Prefix path")
         })
-        try(image(niftiVolume(), z = input$slider_x, plane = "sagittal", plot.type = "single", col = gray(0:64 / 64)))
+        withProgress(message = 'loading Sagittal image...', value = 100, {
+            try(image(niftiVolume(), z = input$slider_x, plane = "sagittal", plot.type = "single", col = gray(0:64 / 64)))
+        })
+        removeModal(session)
     })
     
     output$Coronal <- renderPlot({
         validate({
             need(input$prefix != "", "Please input Prefix path")
         })
-        try(image(niftiVolume(), z = input$slider_y, plane = "coronal", plot.type = "single", col = gray(0:64 / 64)))
+        withProgress(message = 'loading Coronal image...', value = 100, {
+            try(image(niftiVolume(), z = input$slider_y, plane = "coronal", plot.type = "single", col = gray(0:64 / 64)))
+        })
+        removeModal(session)
     })
     
     output$RADOccurrence <- renderTable({
@@ -114,7 +137,9 @@ server <- function(input, output, session) {
         t(data.frame(sapply(X = tags, extractColumns, hdrs = getRadiologyOccurrence())))
     }, bordered = TRUE, hover = TRUE, na = "Unknown")
     
+    #
     # Radiology_Image component
+    # 
     getRadiologyImage = reactive({
         image[image$RADIOLOGY_OCCURRENCE_ID == input$RADI_occurrence_id
               & image$RADIOLOGY_PHASE_CONCEPT == input$phase,]
@@ -127,7 +152,7 @@ server <- function(input, output, session) {
         dc <- tryCatch({
             readDICOM(path = paste0(choosePrefix(), getRadiologyImage()$IMAGE_FILEPATH[input$no]))
         }, error = function(e) { e })
-        if(inherits(dc, "simpleError")) showNotification(ui = dc$message, type = "error", duration = 15)
+        if(inherits(dc, "simpleError")) showNotification(ui = dc$message, type = "error", duration = duration)
         else dc
     })
     
@@ -157,7 +182,7 @@ server <- function(input, output, session) {
         nif <- tryCatch({
             dicom2nifti(loadImg())
         }, error = function(e) { e })
-        if(inherits(nif, "simpleError")) showNotification(ui = nif$message, type = "error", duration = 200)
+        if(inherits(nif, "simpleError")) showNotification(ui = nif$message, type = "error", duration = duration)
         else try(image(x = nif))
     })
     
