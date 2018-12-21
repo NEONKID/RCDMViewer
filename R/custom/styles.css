@@ -66,3 +66,12 @@ tbody td:hover:before {
   z-index: -1;
 }
 
+footer {
+  position: absolute;
+  bottom: 0;
+  width: 98%;
+  height: 25px;
+  background: #1E88E5;
+  color: white;
+}
+
