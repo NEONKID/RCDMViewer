@@ -12,6 +12,18 @@ See this link for more information on [RCDM](https://github.com/OHDSI/Radiology-
 
 
 
+## Preview (image)
+
+![Radiology_Image](images/preview-image.gif)
+
+
+
+## Preview (Occurrence)
+
+![Radiology_Occurrence](images/preview-occurrence.gif)
+
+
+
 ## How to use
 
 This application must ETL the current user's radiology image in RCDM format, and this viewer will not work when reading normal radiation image.
