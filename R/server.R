@@ -23,7 +23,7 @@ duration <- as.integer(cfgReadFile(viewerConfig, 'duration'))
 debug <- as.logical(cfgReadFile(viewerConfig, 'debugMode'))
 
 # If success connection, input tableName, databaseName,,
-databaseSchema <- 'Radiology_CDM_QUER.dbo'
+databaseSchema <- cfgReadFile(viewerConfig, 'database')
 tbSchema_Image <- 'Radiology_Image'
 tbSchema_Occurrence <- 'Radiology_Occurrence'
 
@@ -87,9 +87,7 @@ server <- function(input, output, session) {
     observe({
         volume <- niftiVolume()
         d <- dim(volume)
-        
-        # Control the value, min, max, and step.
-        # Step size is 2 when input value is even; 1 when value is odd.
+
         updateSliderInput(session, 'slider_x', value = as.integer(d[1] / 2), max = d[1])
         updateSliderInput(session, 'slider_y', value = as.integer(d[2] / 2), max = d[2])
         updateSliderInput(session, 'slider_z', value = as.integer(d[3] / 2), max = d[3])
