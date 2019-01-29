@@ -1,6 +1,8 @@
 library(shinythemes)
 library(shinyWidgets)
 library(shinyBS)
+library(shinycssloaders)
+library(plotly)
 
 source('tabs.R')
 
@@ -15,5 +17,6 @@ shinyUI(fluidPage(theme = shinytheme("cerulean"),
             "----",
             tabPanel('About', includeMarkdown('about.md'))
         )
-    )
+    ),
+    responsive = TRUE
 ))

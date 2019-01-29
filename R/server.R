@@ -1,6 +1,5 @@
 library('RadETL')
-library('oro.dicom')
-library('oro.nifti')
+require('oro.dicom','oro.nifti','neurobase')
 
 options(niftiAuditTrail = TRUE)
 
@@ -60,10 +59,11 @@ server <- function(input, output, session) {
             need(input$RADO_occurrence_id != "", "Please check CDM connection information..")
         })
         withProgress(message = 'Image loading...', value = 100, {
+            shinyjs::disable(id = "RADO_occurrence_id")
             dc <- tryCatch({
-                showModal(modalDialog(
-                    title = sprintf("Occurrence ID: %s Reading", input$RADO_occurrence_id), 
-                    sprintf("Reading the %d images Please wait", getRadiologyOccurrence()$IMAGE_TOTAL_COUNT), easyClose = FALSE, footer = NULL))
+                # showModal(modalDialog(
+                #     title = sprintf("Occurrence ID: %s Reading", input$RADO_occurrence_id), 
+                #     sprintf("Reading the %d images Please wait", getRadiologyOccurrence()$IMAGE_TOTAL_COUNT), easyClose = FALSE, footer = NULL))
                 readDICOM(path = paste0(choosePrefix(), getRadiologyOccurrence()$RADIOLOGY_DIRPATH), verbose = debug)
             }, error = function(e) { 
                 e 
@@ -91,6 +91,11 @@ server <- function(input, output, session) {
         updateSliderInput(session, 'slider_x', value = as.integer(d[1] / 2), max = d[1])
         updateSliderInput(session, 'slider_y', value = as.integer(d[2] / 2), max = d[2])
         updateSliderInput(session, 'slider_z', value = as.integer(d[3] / 2), max = d[3])
+        
+        # Ortho2 options,,
+        updateSwitchInput(session, 'crosshair_stat', value = FALSE)
+        updateSwitchInput(session, 'orientation_stat', value = FALSE)
+        updateSwitchInput(session, 'contrast_stat', value = FALSE)
     })
     
     output$RADO_occurrence_id <- renderUI({
@@ -102,7 +107,8 @@ server <- function(input, output, session) {
             need(input$prefix != "", "Please input Prefix path")
         })
         withProgress(message = 'loading Axial image...', value = 100, {
-            try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single", col = gray(0:64 / 64)))
+            # try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single", col = gray(0:64 / 64)))
+            try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single"))
         })
         removeModal(session)
     })
@@ -112,7 +118,7 @@ server <- function(input, output, session) {
             need(input$prefix != "", "Please input Prefix path")
         })
         withProgress(message = 'loading Sagittal image...', value = 100, {
-            try(image(niftiVolume(), z = input$slider_x, plane = "sagittal", plot.type = "single", col = gray(0:64 / 64)))
+            try(image(niftiVolume(), z = input$slider_x, plane = "sagittal", plot.type = "single"))
         })
         removeModal(session)
     })
@@ -122,7 +128,7 @@ server <- function(input, output, session) {
             need(input$prefix != "", "Please input Prefix path")
         })
         withProgress(message = 'loading Coronal image...', value = 100, {
-            try(image(niftiVolume(), z = input$slider_y, plane = "coronal", plot.type = "single", col = gray(0:64 / 64)))
+            try(image(niftiVolume(), z = input$slider_y, plane = "coronal", plot.type = "single"))
         })
         removeModal(session)
     })
@@ -131,9 +137,51 @@ server <- function(input, output, session) {
         validate({
             need(input$RADO_occurrence_id != "", "Please check CDM connection information..")
         })
-        tags <- c("PERSON_ID", "IMAGE_TOTAL_COUNT", "RADIOLOGY_PROTOCOL_CONCEPT_ID", "DOSAGE_VALUE_AS_NUMBER", "RADIOLOGY_DIRPATH")
-        t(data.frame(sapply(X = tags, extractColumns, hdrs = getRadiologyOccurrence())))
+        name <- c("PERSON_ID", "IMAGE_TOTAL_COUNT", "RADIOLOGY_PROTOCOL_CONCEPT_ID", "DOSAGE_VALUE_AS_NUMBER", "RADIOLOGY_DIRPATH")
+        df <- t(data.frame(sapply(X = name, extractColumns, hdrs = getRadiologyOccurrence(), simplify = FALSE, USE.NAMES = FALSE)))
+        row.names(df) <- NULL
+        colnames(df) <- 'value'
+        cbind(name, df)
     }, bordered = TRUE, hover = TRUE, na = "Unknown")
+    
+    output$orthographic <- renderPlot({
+        validate({
+            need(input$prefix != "", "Please input Prefix path")
+        })
+        withProgress(message = 'loading orthographic image...', value = 100, {
+            nif <- niftiVolume()
+            if(input$contrast_stat) {
+                try(ortho2(nif, 
+                           col.crosshairs = "green",
+                           xyz = c(input$slider_x, input$slider_y, input$slider_z),
+                           crosshairs = input$crosshair_stat,
+                           y = nif > quantile(nif, 0.8),
+                           oma = rep(0, 4),
+                           mar = rep(0.5, 4),
+                           add.orient = input$orientation_stat))
+            } else {
+                try(ortho2(nif, 
+                           col.crosshairs = "green",
+                           xyz = c(input$slider_x, input$slider_y, input$slider_z),
+                           crosshairs = input$crosshair_stat,
+                           oma = rep(0, 4),
+                           mar = rep(0.5, 4),
+                           add.orient = input$orientation_stat))
+            }
+        })
+    })
+    
+    output$densityPlot <- renderPlotly({
+        validate({
+            need(input$prefix != "", "Please input Prefix path")
+        })
+        val_den <- density(niftiVolume())
+        
+        plot_ly(x = ~val_den$x, y = ~val_den$y, type = 'scatter', mode = 'lines', fill = 'tozeroy', 
+                fillcolor = 'rgba(255, 212, 96, 0.5)', line = list(width = 1.0)) %>%
+            layout(xaxis = list(title = paste0('N = ', val_den$n, ', Bandwidth = ', val_den$bw)),
+                   yaxis = list(title = 'Density'))
+    })
     
     #
     # Radiology_Image component
