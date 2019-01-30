@@ -18,5 +18,23 @@ shinyUI(fluidPage(theme = shinytheme("cerulean"),
             tabPanel('About', includeMarkdown('about.md'))
         )
     ),
-    responsive = TRUE
+    fixedPanel(
+        dropdown(
+            br(),
+            textInput(inputId = "prefix", label = "Prefix Path", placeholder = "Example: F:\\Radiology"),
+            actionBttn(inputId = 'cfPf', label = 'Confirm', style = 'unite', color = 'primary', size = 'sm'),
+            
+            br(),
+            status = 'primary',
+            icon = icon('folder'),
+            style = "material-circle",
+            up = TRUE,
+            animate = animateOptions(
+                enter = animations$attention_seekers$pulse,
+                exit = animations$zooming_exits$zoomOutDown,
+                duration = .5
+            )
+        ),
+        bottom = 5
+    )
 ))

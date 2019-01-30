@@ -15,7 +15,6 @@ RADImageTab <- sidebarLayout(
         p('You can see each image by selecting the desired Occurrence ID and slowly moving the Image No bar.'),
         p('Please enter the Prefix Path before proceeding to the image.'),
         br(),
-        textInput(inputId = "prefix", label = "Prefix Path", placeholder = "Example: F:\\Radiology"),
         uiOutput(outputId = "no"),
         helpText(no_help),
         uiOutput(outputId = "modality"),
@@ -53,14 +52,9 @@ RADOcurrenceTab <- fluidRow(
             helpText(o_help),
             
             splitLayout(
-                #helpText('Crosshair'),
-                switchInput('crosshair_stat', value = FALSE, onStatus = 'success', offStatus = 'danger', size = 'mini'),
-                
-                #helpText('Orientation'),
-                switchInput('orientation_stat', value = FALSE, onStatus = 'success', offStatus = 'danger', size = 'mini'),
-                
-                #helpText('Contrast Line'),
-                switchInput('contrast_stat', value = FALSE, onStatus = 'success', offStatus = 'danger', size = 'mini')
+                switchInput('crosshair_stat', value = FALSE, size = 'mini', label = 'CH'),
+                switchInput('orientation_stat', value = FALSE, size = 'mini', label = 'OR'),
+                switchInput('contrast_stat', value = FALSE, size = 'mini', label = 'BR')
             )
         )
     ),
@@ -77,9 +71,8 @@ RADOcurrenceTab <- fluidRow(
     column(width = 3,
         h3('Orthographic View'),
         tabsetPanel(type = "tabs",
-            tabPanel("All view", plotOutput(outputId = "orthographic"))
+            tabPanel("All view", plotOutput(outputId = "orthographic") %>% withSpinner(color = "#1E88E5", type = 8))
         ),
-        plotlyOutput(outputId = "densityPlot") %>% withSpinner(color = "#1E88E5")
-    ),
-    responsive = TRUE
+        plotlyOutput(outputId = "densityPlot") %>% withSpinner(color = "#1E88E5", type = 8)
+    )
 )
