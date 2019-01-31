@@ -1,6 +1,7 @@
 library('RadETL')
 library('oro.dicom')
 library('oro.nifti')
+library('neurobase')
 
 options(niftiAuditTrail = TRUE)
 
@@ -43,10 +44,10 @@ extractColumns <- function(hdrs, string, idx) {
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
     # Common component
-    choosePrefix = reactive({
+    getPrefix = eventReactive(input$cfPf, {
         input$prefix
     })
-    
+
     #
     # Radiology_Occurrence component
     # 
@@ -56,18 +57,15 @@ server <- function(input, output, session) {
     
     loadOcur <- reactive({
         validate({
-            need(input$prefix != "", "Please input Prefix path")
+            need(getPrefix() != "", "Please input Prefix path")
             need(input$RADO_occurrence_id != "", "Please check CDM connection information..")
         })
         withProgress(message = 'Image loading...', value = 100, {
+            shinyjs::disable(id = "RADO_occurrence_id")
             dc <- tryCatch({
-                showModal(modalDialog(
-                    title = sprintf("Occurrence ID: %s Reading", input$RADO_occurrence_id), 
-                    sprintf("Reading the %d images Please wait", getRadiologyOccurrence()$IMAGE_TOTAL_COUNT), easyClose = FALSE, footer = NULL))
-                readDICOM(path = paste0(choosePrefix(), getRadiologyOccurrence()$RADIOLOGY_DIRPATH), verbose = debug)
+                readDICOM(path = paste0(getPrefix(), getRadiologyOccurrence()$RADIOLOGY_DIRPATH), verbose = debug)
             }, error = function(e) { 
-                e 
-                removeModal(session)
+                e
             })
         })
         if(inherits(dc, "simpleError")) showNotification(ui = dc$message, type = "error", duration = duration)
@@ -91,49 +89,97 @@ server <- function(input, output, session) {
         updateSliderInput(session, 'slider_x', value = as.integer(d[1] / 2), max = d[1])
         updateSliderInput(session, 'slider_y', value = as.integer(d[2] / 2), max = d[2])
         updateSliderInput(session, 'slider_z', value = as.integer(d[3] / 2), max = d[3])
+        
+        # Ortho2 options,,
+        updateSwitchInput(session, 'crosshair_stat', value = FALSE)
+        updateSwitchInput(session, 'orientation_stat', value = FALSE)
+        updateSwitchInput(session, 'contrast_stat', value = FALSE)
     })
     
     output$RADO_occurrence_id <- renderUI({
-        selectInput(inputId = "RADO_occurrence_id", label = "Choose Occurrence ID", choices = occurrence$RADIOLOGY_OCCURRENCE_ID, selected = NULL)
+        pickerInput(inputId = "RADO_occurrence_id", label = "Choose Occurrence ID", choices = occurrence$RADIOLOGY_OCCURRENCE_ID, selected = NULL,
+                    options = list(
+                        'live-search' = TRUE,
+                        'actions-box' = TRUE,
+                        style = 'btn-primary'))
     })
     
     output$Axial <- renderPlot({
         validate({
-            need(input$prefix != "", "Please input Prefix path")
+            need(getPrefix() != "", "Please input Prefix path")
         })
         withProgress(message = 'loading Axial image...', value = 100, {
-            try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single", col = gray(0:64 / 64)))
+            # try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single", col = gray(0:64 / 64)))
+            try(image(niftiVolume(), z = input$slider_z, plane = "axial", plot.type = "single"))
         })
-        removeModal(session)
     })
     
     output$Sagittal <- renderPlot({
         validate({
-            need(input$prefix != "", "Please input Prefix path")
+            need(getPrefix() != "", "Please input Prefix path")
         })
         withProgress(message = 'loading Sagittal image...', value = 100, {
-            try(image(niftiVolume(), z = input$slider_x, plane = "sagittal", plot.type = "single", col = gray(0:64 / 64)))
+            try(image(niftiVolume(), z = input$slider_x, plane = "sagittal", plot.type = "single"))
         })
-        removeModal(session)
     })
     
     output$Coronal <- renderPlot({
         validate({
-            need(input$prefix != "", "Please input Prefix path")
+            need(getPrefix() != "", "Please input Prefix path")
         })
         withProgress(message = 'loading Coronal image...', value = 100, {
-            try(image(niftiVolume(), z = input$slider_y, plane = "coronal", plot.type = "single", col = gray(0:64 / 64)))
+            try(image(niftiVolume(), z = input$slider_y, plane = "coronal", plot.type = "single"))
         })
-        removeModal(session)
     })
     
     output$RADOccurrence <- renderTable({
         validate({
             need(input$RADO_occurrence_id != "", "Please check CDM connection information..")
         })
-        tags <- c("PERSON_ID", "IMAGE_TOTAL_COUNT", "RADIOLOGY_PROTOCOL_CONCEPT_ID", "DOSAGE_VALUE_AS_NUMBER", "RADIOLOGY_DIRPATH")
-        t(data.frame(sapply(X = tags, extractColumns, hdrs = getRadiologyOccurrence())))
+        name <- c("PERSON_ID", "IMAGE_TOTAL_COUNT", "RADIOLOGY_PROTOCOL_CONCEPT_ID", "DOSAGE_VALUE_AS_NUMBER", "RADIOLOGY_DIRPATH")
+        df <- t(data.frame(sapply(X = name, extractColumns, hdrs = getRadiologyOccurrence(), simplify = FALSE, USE.NAMES = FALSE)))
+        row.names(df) <- NULL
+        colnames(df) <- 'value'
+        cbind(name, df)
     }, bordered = TRUE, hover = TRUE, na = "Unknown")
+    
+    output$orthographic <- renderPlot({
+        validate({
+            need(getPrefix() != "", "Please input Prefix path")
+        })
+        withProgress(message = 'loading orthographic image...', value = 100, {
+            nif <- niftiVolume()
+            if(input$contrast_stat) {
+                try(ortho2(nif, 
+                           col.crosshairs = "green",
+                           xyz = c(input$slider_x, input$slider_y, input$slider_z),
+                           crosshairs = input$crosshair_stat,
+                           y = nif > quantile(nif, 0.8),
+                           oma = rep(0, 4),
+                           mar = rep(0.5, 4),
+                           add.orient = input$orientation_stat))
+            } else {
+                try(ortho2(nif, 
+                           col.crosshairs = "green",
+                           xyz = c(input$slider_x, input$slider_y, input$slider_z),
+                           crosshairs = input$crosshair_stat,
+                           oma = rep(0, 4),
+                           mar = rep(0.5, 4),
+                           add.orient = input$orientation_stat))
+            }
+        })
+    })
+    
+    output$densityPlot <- renderPlotly({
+        validate({
+            need(getPrefix() != "", "Please input Prefix path")
+        })
+        try(val_den <- density(niftiVolume()))
+        plot_ly(x = ~val_den$x, y = ~val_den$y, type = 'scatter', mode = 'lines', fill = 'tozeroy', 
+                fillcolor = 'rgba(30, 136, 229, 0.5)', line = list(width = 1.0)) %>%
+            layout(xaxis = list(title = paste0('N = ', val_den$n, ', Bandwidth = ', val_den$bw)),
+                   yaxis = list(title = 'Density'))
+    })
     
     #
     # Radiology_Image component
@@ -145,10 +191,10 @@ server <- function(input, output, session) {
     
     loadImg = reactive({
         validate({
-            need(input$prefix != "", "Please input Prefix path")
+            need(getPrefix() != "", "Please input Prefix path")
         })
         dc <- tryCatch({
-            readDICOM(path = paste0(choosePrefix(), getRadiologyImage()$IMAGE_FILEPATH[input$no]))
+            readDICOM(path = paste0(getPrefix(), getRadiologyImage()$IMAGE_FILEPATH[input$no]))
         }, error = function(e) { e })
         if(inherits(dc, "simpleError")) showNotification(ui = dc$message, type = "error", duration = duration)
         else dc
@@ -175,7 +221,7 @@ server <- function(input, output, session) {
     
     output$viewer <- renderPlot({
         validate({
-            need(input$prefix != "", "Please input Prefix path")
+            need(getPrefix() != "", "Please input Prefix path")
         })
         nif <- tryCatch({
             dicom2nifti(loadImg())
@@ -193,14 +239,20 @@ server <- function(input, output, session) {
     }, bordered = TRUE, hover = TRUE, na = "Unknown")
     
     output$RADI_occurrence_id <- renderUI({
-        selectInput(inputId = "RADI_occurrence_id", label = "Choose Occurrence ID", choices = RadImageList, selected = NULL)
+        pickerInput(inputId = 'RADI_occurrence_id', label = 'Choose Occurrence ID', choices = RadImageList, selected = NULL, 
+                    options = list(
+                        'live-search' = TRUE,
+                        'actions-box' = TRUE,
+                        style = 'btn-primary'))
     })
     
     output$modality <- renderUI({
-        selectInput(inputId = "modality", label = "Choose Modality", choices = modalityList(), selected = NULL)
+        pickerInput(inputId = 'modality', label = 'Choose Modality', choices = modalityList(), selected = NULL,
+                    options = list(style = 'btn-primary'))
     })
     
     output$phase <- renderUI({
-        selectInput(inputId = "phase", label = "Choose Phase ID", choices = phaseList(), selected = NULL)
+        pickerInput(inputId = "phase", label = "Choose Phase ID", choices = phaseList(), selected = NULL,
+                    options = list(style = 'btn-primary'))
     })
 }
