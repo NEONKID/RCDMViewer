@@ -1,8 +1,5 @@
-library(shinythemes)
-library(shinyWidgets)
-library(shinyBS)
-library(shinycssloaders)
-library(plotly)
+need_ui <- c('shinythemes', 'shinyWidgets', 'shinyBS', 'shinycssloaders', 'plotly')
+lapply(need_ui, library, character.only = TRUE)
 
 source('tabs.R')
 
