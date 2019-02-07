@@ -8,10 +8,10 @@ check.packages <- function(pkg) {
     sapply(pkg, require, character.only = TRUE)
 }
 
-need_pkg <- c('units', 'xml2', 'openssl', 'httr', 'binman', 
-              'devtools', 'oro.dicom', 'oro.nifti', 'neurobase', 'shinythemes', 
-              'shinyWidgets', 'shinyBS', 'shinycssloaders', 'plotly')
-check.packages(need_pkg)
+req_pkg <- c('xml2', 'openssl', 'httr', 'binman', 'devtools',           # Basic required packages
+              'oro.dicom', 'oro.nifti', 'neurobase', 'shinythemes',     # Server required packages
+              'shinyWidgets', 'shinyBS', 'shinycssloaders', 'plotly')   # UI required packages
+check.packages(req_pkg)
 
 if(!require('RadETL'))
     devtools::install_github('OHDSI/Radiology-CDM')

@@ -12,18 +12,6 @@ See this link for more information on [RCDM](https://github.com/OHDSI/Radiology-
 
 
 
-## Preview (image)
-
-![Radiology_Image](images/preview-image.gif)
-
-
-
-## Preview (Occurrence)
-
-![Radiology_Occurrence](images/preview-occurrence.gif)
-
-
-
 ## How to install
 
 This application must ETL the current user's radiology image in RCDM format, and this viewer will not work when reading normal radiation image.
@@ -37,6 +25,18 @@ git clone https://github.com/NEONKID/RCDMViewer.git
 ```
 
 If Clone is finished, create RDBMS connection information with RCDM in the configuration file named RCDMViewer.cfg. ***If you do not create this file, you will not be able to use the application.***
+
+
+
+### Using Host
+
+If you want to distribute RCDMViewer directly to the host, you can distribute it using Shiny Server. But before that you need to install the necessary packages for RCDMViewer.
+
+```bash
+Rscript packageManager.R
+```
+
+The packageManager.R code is the code that installs these packages.
 
 
 
@@ -54,5 +54,11 @@ By default, the Shiny server uses port 3838. If you want to distribute it to the
 docker run --name rcdmviewer -d -p 3838:3838 rcdmviewer:latest
 ```
 
+
+
+## Preview 
+
+![Radiology_Image](images/preview-image.gif)
+![Radiology_Occurrence](images/preview-occurrence.gif)
 
 

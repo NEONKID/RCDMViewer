@@ -1,6 +1,5 @@
-library('RadETL')
-need_server <- c('oro.dicom', 'oro.nifti', 'neurobase')
-lapply(need_server, library, character.only = TRUE)
+im_pkg <- c('oro.dicom', 'oro.nifti', 'neurobase', 'RadETL')
+lapply(im_pkg, library, character.only = TRUE)
 
 options(niftiAuditTrail = TRUE)
 
