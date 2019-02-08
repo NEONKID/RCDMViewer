@@ -54,6 +54,17 @@ By default, the Shiny server uses port 3838. If you want to distribute it to the
 docker run --name rcdmviewer -d -p 3838:3838 rcdmviewer:latest
 ```
 
+I recommend using docker-compose. If you want to upload RCDMViewer with a simple command, you can use the above command, but if you want to use log or the like as a storage of host or to put RCDM in container, you have to call several containers.
+
+In general, the web uses 80 ports as the default port, so I connected it to 80 ports.
+(See the docker-compose.yml file for details)
+
+```bash
+docker-compose up
+```
+
+
+
 
 
 ## Preview 
