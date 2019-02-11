@@ -1,7 +1,5 @@
-library('RadETL')
-library('oro.dicom')
-library('oro.nifti')
-library('neurobase')
+im_pkg <- c('oro.dicom', 'oro.nifti', 'neurobase', 'RadETL')
+lapply(im_pkg, library, character.only = TRUE)
 
 options(niftiAuditTrail = TRUE)
 
@@ -176,9 +174,11 @@ server <- function(input, output, session) {
         })
         try(val_den <- density(niftiVolume()))
         plot_ly(x = ~val_den$x, y = ~val_den$y, type = 'scatter', mode = 'lines', fill = 'tozeroy', 
-                fillcolor = 'rgba(30, 136, 229, 0.5)', line = list(width = 1.0)) %>%
-            layout(xaxis = list(title = paste0('N = ', val_den$n, ', Bandwidth = ', val_den$bw)),
-                   yaxis = list(title = 'Density'))
+                fillcolor = 'rgba(30, 136, 229, 0.5)', line = list(simplyfy = FALSE, width = 1.0)) %>%
+            layout(xaxis = list(title = paste0('N = ', val_den$n, ', Bandwidth = ', val_den$bw), zeroline = FALSE),
+                   yaxis = list(title = 'Density', zeroline = FALSE)) %>%
+            animation_opts(frame = 100, transition = 0, redraw = TRUE) %>%
+            animation_slider(hide = TRUE)
     })
     
     #

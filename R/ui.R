@@ -1,8 +1,5 @@
-library(shinythemes)
-library(shinyWidgets)
-library(shinyBS)
-library(shinycssloaders)
-library(plotly)
+im_pkg <- c('shinythemes', 'shinyWidgets', 'shinyBS', 'shinycssloaders', 'plotly')
+lapply(im_pkg, library, character.only = TRUE)
 
 source('tabs.R')
 
