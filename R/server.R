@@ -1,5 +1,8 @@
-im_pkg <- c('oro.dicom', 'oro.nifti', 'neurobase', 'RadETL')
+im_pkg <- c('oro.dicom', 'oro.nifti', 'neurobase', 'RadETL', 'rJava')
 lapply(im_pkg, library, character.only = TRUE)
+
+.jinit('../inst')
+.jaddClassPath('../inst/rcdmviewer.jar')
 
 options(niftiAuditTrail = TRUE)
 
@@ -10,19 +13,24 @@ cfgReadFile <- function(file, pattern) {
 }
 
 viewerConfig <- '../RCDMviewer.cfg'
+atlasConfig <- '../ATLAS_DB.cfg'
 
-db <- DBMSIO$new(
-    server = cfgReadFile(viewerConfig, 'address'),
-    user = cfgReadFile(viewerConfig, 'user'),
-    pw = cfgReadFile(viewerConfig, 'password'),
-    dbms = cfgReadFile(viewerConfig, 'dbms')
-)
+connectDB <- function(config) {
+    DBMSIO$new(
+        server = cfgReadFile(config, 'address'),
+        user = cfgReadFile(config, 'user'),
+        pw = cfgReadFile(config, 'password'),
+        dbms = cfgReadFile(config, 'dbms')
+    )
+}
+
+db <- connectDB(config = viewerConfig)
 
 duration <- as.integer(cfgReadFile(viewerConfig, 'duration'))
 debug <- as.logical(cfgReadFile(viewerConfig, 'debugMode'))
 
 # If success connection, input tableName, databaseName,,
-databaseSchema <- cfgReadFile(viewerConfig, 'database')
+databaseSchema <- cfgReadFile(viewerConfig, 'cdmDatabaseSchema')
 tbSchema_Image <- 'Radiology_Image'
 tbSchema_Occurrence <- 'Radiology_Occurrence'
 
@@ -31,12 +39,68 @@ occurrence <- db$dbGetdtS(dbS = databaseSchema, tbS = tbSchema_Occurrence)
 
 # RCDM Image
 image <- db$dbGetdtS(dbS = databaseSchema, tbS = tbSchema_Image)
-RadImageList <- unique(image$RADIOLOGY_OCCURRENCE_ID)
 
 db$finalize()
 
+# ATLAS Cohort
+cohort <- tryCatch({
+    db <- connectDB(config = atlasConfig)
+    
+    databaseSchema <- cfgReadFile(atlasConfig, 'api_database')
+    tbSchema_cohort <- 'cohort_definition_details'
+    
+    db$dbGetdtS(dbS = databaseSchema, tbS = tbSchema_cohort)
+}, error = function(e) {
+    print(e)
+    NULL
+})
+
+if(!is.null(db)) db$finalize()
+
 extractColumns <- function(hdrs, string, idx) {
     hdrs[[string]][idx]
+}
+
+getExpressionItems <- function(json) {
+    df <- jsonlite::fromJSON(json)
+    return(df$ConceptSets$expression)
+}
+
+generateSql <- function(cohortID) {
+    generateStats <- TRUE
+    vocabularySchema <- cfgReadFile(viewerConfig, 'vocaDatabaseSchema')
+    resultSchema <- cfgReadFile(viewerConfig, 'resultDatabaseSchema')
+    cdmSchema <- cfgReadFile(viewerConfig, 'cdmDatabaseSchema')
+    cohortId <- as.integer(cohortID)
+    
+    options.df <- data.frame(generateStats, vocabularySchema, resultSchema, cdmSchema, cohortId)
+    options <- jsonlite::toJSON(options.df)
+    options <- gsub('\\[', '', options)
+    options <- gsub(']', '', options)
+    expression <- cohort$EXPRESSION[cohort$ID == cohortId]
+    
+    cohortQuery <- .jnew('xyz/neonkid/rcdmviewer/CohortQuery')
+    
+    osql <- .jcall(obj = cohortQuery, returnSig = 'Ljava/lang/String;', method = 'generateSql', options, expression)
+    rsql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort')
+    sql <- translate(rsql, targetDialect = 'sql server')
+    
+    details <- createConnectionDetails(
+        server = cfgReadFile(viewerConfig, 'address'),
+        user = cfgReadFile(viewerConfig, 'user'),
+        password = cfgReadFile(viewerConfig, 'password'),
+        dbms = cfgReadFile(viewerConfig, 'dbms')
+    )
+    con <- connect(connectionDetails = details)
+    executeSql(con, sql = sql)
+    
+    res <- querySql(con, sql = 'select * from #final_cohort')
+    print(nrow(res))
+    
+    executeSql(con, translate(readSql('../inst/drop_cohort.sql'), targetDialect = cfgReadFile(viewerConfig, 'dbms')))
+    disconnect(con)
+    
+    return(res$PERSON_ID)
 }
 
 # Define server logic required to draw a histogram
@@ -49,8 +113,23 @@ server <- function(input, output, session) {
     #
     # Radiology_Occurrence component
     # 
+    
+    getCohortList4O = reactive({
+        validate({
+            need(input$RADO_cohort != "", "Cohort not defined !")
+        })
+        
+        withProgress(message = 'Cohort Generating....', value = 100, {
+            generateSql(input$RADO_cohort)
+        })
+    })
+    
     getRadiologyOccurrence = reactive({
-        occurrence[occurrence$RADIOLOGY_OCCURRENCE_ID == input$RADO_occurrence_id,]
+        target <- occurrence[occurrence$RADIOLOGY_OCCURRENCE_ID == input$RADO_occurrence_id,]
+        personList <- getCohortList4O()
+        if(!is.null(personList()))
+            target[target$PERSON_ID %in% personList,]
+        else target
     })
     
     loadOcur <- reactive({
@@ -94,8 +173,20 @@ server <- function(input, output, session) {
         updateSwitchInput(session, 'contrast_stat', value = FALSE)
     })
     
+    output$RADO_cohort <- renderUI({
+        validate({
+            need(!is.null(cohort), "Unavailable ATLAS Cohort List...")
+        })
+        pickerInput(inputId = 'RADO_cohort', label = 'Choose ATLAS Cohort ID', choices = cohort$ID, selected = NULL, 
+                    options = list(
+                        'live-search' = TRUE,
+                        'actions-box' = TRUE,
+                        style = 'btn-primary'))
+    })
+    
     output$RADO_occurrence_id <- renderUI({
-        pickerInput(inputId = "RADO_occurrence_id", label = "Choose Occurrence ID", choices = occurrence$RADIOLOGY_OCCURRENCE_ID, selected = NULL,
+        target <- getRadiologyOccurrence()
+        pickerInput(inputId = "RADO_occurrence_id", label = "Choose Occurrence ID", choices = target$RADIOLOGY_OCCURRENCE_ID, selected = NULL,
                     options = list(
                         'live-search' = TRUE,
                         'actions-box' = TRUE,
@@ -189,6 +280,16 @@ server <- function(input, output, session) {
               & image$RADIOLOGY_PHASE_CONCEPT == input$phase,]
     })
     
+    getCohortList4I = reactive({
+        validate({
+            need(input$RADI_cohort != "", "Cohort not defined !")
+        })
+        
+        withProgress(message = 'Cohort Generating....', value = 100, {
+            generateSql(input$RADI_cohort)
+        })
+    })
+
     loadImg = reactive({
         validate({
             need(getPrefix() != "", "Please input Prefix path")
@@ -210,6 +311,17 @@ server <- function(input, output, session) {
     
     modalityList = reactive({
         unique(occurrence$RADIOLOGY_MODALITY_CONCEPT_ID[occurrence$RADIOLOGY_OCCURRENCE_ID == input$RADI_occurrence_id])
+    })
+    
+    output$RADI_cohort <- renderUI({
+        validate({
+            need(!is.null(cohort), "Unavailable ATLAS Cohort List...")
+        })
+        pickerInput(inputId = 'RADI_cohort', label = 'Choose ATLAS Cohort ID', choices = cohort$ID, selected = NULL, 
+                    options = list(
+                        'live-search' = TRUE,
+                        'actions-box' = TRUE,
+                        style = 'btn-primary'))
     })
     
     output$no <- renderUI({
@@ -239,7 +351,14 @@ server <- function(input, output, session) {
     }, bordered = TRUE, hover = TRUE, na = "Unknown")
     
     output$RADI_occurrence_id <- renderUI({
-        pickerInput(inputId = 'RADI_occurrence_id', label = 'Choose Occurrence ID', choices = RadImageList, selected = NULL, 
+        personList <- getCohortList4I()
+
+        if(!is.null(personList))
+            target <- unique(image[image$PERSON_ID %in% personList,]$RADIOLOGY_OCCURRENCE_ID)
+        else
+            target <- unique(image$RADIOLOGY_OCCURRENCE_ID)
+        
+        pickerInput(inputId = 'RADI_occurrence_id', label = 'Choose Occurrence ID', choices = target, selected = NULL, 
                     options = list(
                         'live-search' = TRUE,
                         'actions-box' = TRUE,
