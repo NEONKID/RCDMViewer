@@ -97,39 +97,32 @@ generateSql <- function(cohortID) {
     options <- gsub(']', '', options)
     expression <- cohort$EXPRESSION[cohort$ID == cohortId]
     
-    res <- tryCatch({
-        res <- NA
+    res <- NA
+    
+    # This cohort already generations..
+    osql <- 'select subject_id from @target_database_schema.@target_cohort_table where cohort_definition_id = @cohort_id'
+    sql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort', cohort_id = cohortId)
+    
+    db <- connectDB(config = viewerConfig)
+    res <- db$querySql(sql = sql)
+    
+    # print(nrow(res))
+    
+    # No data then Cohort Generation...
+    if(nrow(res) == 0) {
+        cohortQuery <- .jnew('xyz/neonkid/rcdmviewer/CohortQuery')
         
-        # This cohort already generations..
-        osql <- 'select subject_id from @target_database_schema.@target_cohort_table where cohort_definition_id = @cohort_id'
-        sql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort', cohort_id = cohortId)
+        osql <- .jcall(obj = cohortQuery, returnSig = 'Ljava/lang/String;', method = 'generateSql', options, expression)
+        sql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort')
         
-        db <- connectDB(config = viewerConfig)
-        res <- db$querySql(sql = sql)
+        db$executeSql(sql = sql)
         
-        # print(nrow(res))
-        
-        # No data then Cohort Generation...
-        if(nrow(res) == 0) {
-            cohortQuery <- .jnew('xyz/neonkid/rcdmviewer/CohortQuery')
-            
-            osql <- .jcall(obj = cohortQuery, returnSig = 'Ljava/lang/String;', method = 'generateSql', options, expression)
-            sql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort')
-            
-            db$executeSql(sql = sql)
-            
-            res <- db$querySql(sql = 'select person_id from #final_cohort')
-            db$executeSql(readSql('../inst/drop_cohort.sql'))
-        }
-        
-        db$finalize()
-        res
-    }, error = function(e) {
-        print(e)
-    }, finally = {
-        assign("res", res, envir = .GlobalEnv)
-        res
-    })
+        res <- db$querySql(sql = 'select person_id from #final_cohort')
+        db$executeSql(readSql('../inst/drop_cohort.sql'))
+    }
+    
+    db$finalize()
+    
     return(res)
 }
 
@@ -316,7 +309,11 @@ server <- function(input, output, session) {
         })
 
         withProgress(message = 'Cohort Generating....', value = 100, {
-            generateSql(input$RADI_cohort)
+            cohort <- tryCatch({
+                generateSql(input$RADI_cohort)
+            }, error = function(e) { e } )
+            if(inherits(cohort, "simpleError")) showNotification(ui = nif$message, type = "error", duration = duration)
+            else cohort
         })
     })
 
