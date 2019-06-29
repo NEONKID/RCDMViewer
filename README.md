@@ -16,7 +16,7 @@ If the original radiological image was a DICOM Viewer, this viewer is a viewer b
 
 See this link for more information on [RCDM](https://github.com/OHDSI/Radiology-CDM)
 
-
+<br />
 
 
 ## ⚛ Preview
@@ -29,6 +29,10 @@ See this link for more information on [RCDM](https://github.com/OHDSI/Radiology-
 
 ### Cohort View
 ![Cohort_Image](images/preview-atlas-cohort.png)
+
+
+
+<br />
 
 
 
@@ -47,6 +51,10 @@ $ Rscript -e packageManager.R
 ```
 
 Be sure to install the package via the above command. The package described in this code is the package needed to use RCDMViewer. Depending on the device, it may take more than 10 minutes.
+
+
+
+<br />
 
 
 
@@ -94,7 +102,7 @@ Use docker-compose for multi-server configuration.
 
 
 
-
+<br />
 
 ## Author
 
@@ -104,9 +112,17 @@ Use docker-compose for multi-server configuration.
 
 
 
+<br />
+
+
+
 ## 🤝 Contributing
 
 Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/NEONKID/RCDMViewer/issues).
+
+
+
+<br />
 
 
 
