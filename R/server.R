@@ -66,6 +66,24 @@ getExpressionItems <- function(json) {
     return(df$ConceptSets$expression)
 }
 
+errAlert <- function(msg) {
+    shinyalert::shinyalert(
+        title = "Oops !",
+        text = msg,
+        closeOnEsc = F,
+        closeOnClickOutside = TRUE,
+        html = FALSE,
+        type = "error",
+        showConfirmButton = TRUE,
+        showCancelButton = FALSE,
+        confirmButtonText = "OK",
+        confirmButtonCol = "#FF003C",
+        timer = 1000000,
+        imageUrl = "",
+        animation = TRUE
+    )
+}
+
 generateSql <- function(cohortID) {
     generateStats <- TRUE
     vocabularySchema <- cfgReadFile(viewerConfig, 'vocaDatabaseSchema')
@@ -79,28 +97,40 @@ generateSql <- function(cohortID) {
     options <- gsub(']', '', options)
     expression <- cohort$EXPRESSION[cohort$ID == cohortId]
     
-    cohortQuery <- .jnew('xyz/neonkid/rcdmviewer/CohortQuery')
-    
-    osql <- .jcall(obj = cohortQuery, returnSig = 'Ljava/lang/String;', method = 'generateSql', options, expression)
-    rsql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort')
-    sql <- translate(rsql, targetDialect = 'sql server')
-    
-    details <- createConnectionDetails(
-        server = cfgReadFile(viewerConfig, 'address'),
-        user = cfgReadFile(viewerConfig, 'user'),
-        password = cfgReadFile(viewerConfig, 'password'),
-        dbms = cfgReadFile(viewerConfig, 'dbms')
-    )
-    con <- connect(connectionDetails = details)
-    executeSql(con, sql = sql)
-    
-    res <- querySql(con, sql = 'select * from #final_cohort')
-    print(nrow(res))
-    
-    executeSql(con, translate(readSql('../inst/drop_cohort.sql'), targetDialect = cfgReadFile(viewerConfig, 'dbms')))
-    disconnect(con)
-    
-    return(res$PERSON_ID)
+    res <- tryCatch({
+        res <- NA
+        
+        # This cohort already generations..
+        osql <- 'select subject_id from @target_database_schema.@target_cohort_table where cohort_definition_id = @cohort_id'
+        sql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort', cohort_id = cohortId)
+        
+        db <- connectDB(config = viewerConfig)
+        res <- db$querySql(sql = sql)
+        
+        # print(nrow(res))
+        
+        # No data then Cohort Generation...
+        if(nrow(res) == 0) {
+            cohortQuery <- .jnew('xyz/neonkid/rcdmviewer/CohortQuery')
+            
+            osql <- .jcall(obj = cohortQuery, returnSig = 'Ljava/lang/String;', method = 'generateSql', options, expression)
+            sql <- render(osql, target_database_schema = resultSchema, target_cohort_table = 'cohort')
+            
+            db$executeSql(sql = sql)
+            
+            res <- db$querySql(sql = 'select person_id from #final_cohort')
+            db$executeSql(readSql('../inst/drop_cohort.sql'))
+        }
+        
+        db$finalize()
+        res
+    }, error = function(e) {
+        print(e)
+    }, finally = {
+        assign("res", res, envir = .GlobalEnv)
+        res
+    })
+    return(res)
 }
 
 # Define server logic required to draw a histogram
@@ -127,7 +157,7 @@ server <- function(input, output, session) {
     getRadiologyOccurrence = reactive({
         target <- occurrence[occurrence$RADIOLOGY_OCCURRENCE_ID == input$RADO_occurrence_id,]
         personList <- getCohortList4O()
-        if(!is.null(personList()))
+        if(!is.null(personList))
             target[target$PERSON_ID %in% personList,]
         else target
     })
@@ -284,7 +314,7 @@ server <- function(input, output, session) {
         validate({
             need(input$RADI_cohort != "", "Cohort not defined !")
         })
-        
+
         withProgress(message = 'Cohort Generating....', value = 100, {
             generateSql(input$RADI_cohort)
         })
@@ -352,11 +382,13 @@ server <- function(input, output, session) {
     
     output$RADI_occurrence_id <- renderUI({
         personList <- getCohortList4I()
-
-        if(!is.null(personList))
-            target <- unique(image[image$PERSON_ID %in% personList,]$RADIOLOGY_OCCURRENCE_ID)
+        
+        if(is.data.frame(personList))
+            target <- unique(image[unique(image$PERSON_ID) %in% personList[[1]],]$RADIOLOGY_OCCURRENCE_ID)
         else
             target <- unique(image$RADIOLOGY_OCCURRENCE_ID)
+        
+        # print(length(target))
         
         pickerInput(inputId = 'RADI_occurrence_id', label = 'Choose Occurrence ID', choices = target, selected = NULL, 
                     options = list(
