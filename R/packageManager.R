@@ -8,9 +8,9 @@ check.packages <- function(pkg) {
     sapply(pkg, require, character.only = TRUE)
 }
 
-req_pkg <- c('xml2', 'openssl', 'httr', 'binman', 'devtools',           # Basic required packages
-              'oro.dicom', 'oro.nifti', 'neurobase', 'shinythemes',     # Server required packages
-              'shinyWidgets', 'shinyBS', 'shinycssloaders', 'plotly')   # UI required packages
+req_pkg <- c('xml2', 'openssl', 'httr', 'binman', 'devtools',                       # Basic required packages
+              'oro.dicom', 'oro.nifti', 'neurobase', 'shinythemes',                 # Server required packages
+              'shinyWidgets', 'shinyBS', 'shinycssloaders', 'plotly', 'jsonlite')   # UI required packages
 check.packages(req_pkg)
 
 if(!require('RadETL'))
